@@ -26,6 +26,6 @@ ovs-ofctl -O OpenFlow14 add-flow ovs-br \
 
 ovs-ofctl -O OpenFlow14 dump-flows ovs-br
 
-tracker.py is a script that observes both the control plane and the 
-data plane between the EPC and ENB, to gather the parameters required
-by caching.
+tracker.py is a script that observes both the control plane and the data 
+plane between the EPC and ENB, to gather the parameters required by 
+caching.
