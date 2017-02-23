@@ -472,6 +472,10 @@ static int key_extract(struct sk_buff *skb, struct sw_flow_key *key)
 	/* Flags are always used as part of stats */
 	key->tp.flags = 0;
 
+	/* Reset gtp_teid */
+	memset(&key->gtp_teid, 0, sizeof(key->gtp_teid));
+
+
 	skb_reset_mac_header(skb);
 
 	/* Link layer.  We are guaranteed to have at least the 14 byte Ethernet
@@ -557,12 +561,8 @@ static int key_extract(struct sk_buff *skb, struct sw_flow_key *key)
 					struct simplegtphdr* gtp = (struct simplegtphdr *)(udp_hdr(skb) + 1);
 					key->gtp_teid = gtp->teid;
 				}
-				else {
-					memset(&key->gtp_teid, 0, sizeof(key->gtp_teid));
-				}
 			} else {
 				memset(&key->tp, 0, sizeof(key->tp));
-				memset(&key->gtp_teid, 0, sizeof(key->gtp_teid));
 			}
 		} else if (key->ip.proto == IPPROTO_SCTP) {
 			if (sctphdr_ok(skb)) {

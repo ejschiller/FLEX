@@ -164,6 +164,7 @@ ovs_key_attr_to_string(enum ovs_key_attr attr, char *namebuf, size_t bufsize)
     case OVS_KEY_ATTR_MPLS: return "mpls";
     case OVS_KEY_ATTR_DP_HASH: return "dp_hash";
     case OVS_KEY_ATTR_RECIRC_ID: return "recirc_id";
+    case OVS_KEY_ATTR_GTP_TEID: return "gtp_teid";
 
     case __OVS_KEY_ATTR_MAX:
     default:
@@ -1804,6 +1805,7 @@ static const struct attr_len_tbl ovs_flow_key_attr_lens[OVS_KEY_ATTR_MAX + 1] = 
     [OVS_KEY_ATTR_CT_ZONE]   = { .len = 2 },
     [OVS_KEY_ATTR_CT_MARK]   = { .len = 4 },
     [OVS_KEY_ATTR_CT_LABELS] = { .len = sizeof(struct ovs_key_ct_labels) },
+    [OVS_KEY_ATTR_GTP_TEID]  = { .len = sizeof(be32) },
 };
 
 /* Returns the correct length of the payload for a flow key attribute of the
@@ -2927,6 +2929,10 @@ format_odp_key_attr(const struct nlattr *a, const struct nlattr *ma,
 
         ds_chomp(ds, ',');
         break;
+    }
+    case OVS_KEY_ATTR_GTP_TEID: {
+	format_be32(ds, "gtp_teid", key->gtp_teid, MASK(mask, gtp_teid), verbose);
+	break;
     }
     case OVS_KEY_ATTR_UNSPEC:
     case __OVS_KEY_ATTR_MAX:
@@ -4072,6 +4078,7 @@ parse_odp_key_mask_attr(const char *s, const struct simap *port_names,
     SCAN_SINGLE("ct_zone(", uint16_t, u16, OVS_KEY_ATTR_CT_ZONE);
     SCAN_SINGLE("ct_mark(", uint32_t, u32, OVS_KEY_ATTR_CT_MARK);
     SCAN_SINGLE("ct_label(", ovs_u128, u128, OVS_KEY_ATTR_CT_LABELS);
+    SCAN_SINGLE("gtp_teid(", be32, be32, OVS_KEY_ATTR_GTP_TEID);
 
     SCAN_BEGIN_NESTED("tunnel(", OVS_KEY_ATTR_TUNNEL) {
         SCAN_FIELD_NESTED("tun_id=", ovs_be64, be64, OVS_TUNNEL_KEY_ATTR_ID);
@@ -4323,6 +4330,11 @@ odp_flow_key_from_flow__(const struct odp_flow_key_parms *parms,
         nl_msg_put_unspec(buf, OVS_KEY_ATTR_CT_LABELS, &data->ct_label,
                           sizeof(data->ct_label));
     }
+    if (parms->support.gtp_teid) {
+        nl_msg_put_unspec(buf, OVS_KEY_ATTR_GTP_TEID, &data->gtp_teid,
+                          sizeof(data->gtp_teid));
+    }
+ 
     if (parms->support.recirc) {
         nl_msg_put_u32(buf, OVS_KEY_ATTR_RECIRC_ID, data->recirc_id);
         nl_msg_put_u32(buf, OVS_KEY_ATTR_DP_HASH, data->dp_hash);

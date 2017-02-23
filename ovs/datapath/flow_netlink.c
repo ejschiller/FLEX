@@ -304,7 +304,8 @@ size_t ovs_key_attr_size(void)
 		+ nla_total_size(2)   /* OVS_KEY_ATTR_ETHERTYPE */
 		+ nla_total_size(40)  /* OVS_KEY_ATTR_IPV6 */
 		+ nla_total_size(2)   /* OVS_KEY_ATTR_ICMPV6 */
-		+ nla_total_size(28); /* OVS_KEY_ATTR_ND */
+		+ nla_total_size(28)  /* OVS_KEY_ATTR_ND */
+		+ nla_total_size(32); /* OVS_KEY_ATTR_GTP_TEID */
 }
 
 static const struct ovs_len_tbl ovs_vxlan_ext_key_lens[OVS_VXLAN_EXT_MAX + 1] = {
@@ -357,6 +358,7 @@ static const struct ovs_len_tbl ovs_key_lens[OVS_KEY_ATTR_MAX + 1] = {
 	[OVS_KEY_ATTR_CT_ZONE]	 = { .len = sizeof(u16) },
 	[OVS_KEY_ATTR_CT_MARK]	 = { .len = sizeof(u32) },
 	[OVS_KEY_ATTR_CT_LABELS] = { .len = sizeof(struct ovs_key_ct_labels) },
+	[OVS_KEY_ATTR_GTP_TEID]	 = { .len = sizeof(be32) },
 };
 
 static bool check_attr_len(unsigned int attr_len, unsigned int expected_len)
@@ -899,6 +901,13 @@ static int metadata_from_nlattrs(struct net *net, struct sw_flow_match *match,
 		SW_FLOW_KEY_MEMCPY(match, ct.labels, cl->ct_labels,
 				   sizeof(*cl), is_mask);
 		*attrs &= ~(1ULL << OVS_KEY_ATTR_CT_LABELS);
+	}
+	if (*attrs & (1 << OVS_KEY_ATTR_GTP_TEID) &&
+	    ovs_ct_verify(net, OVS_KEY_ATTR_GTP_TEID)) {
+		u32 mark = nla_get_be32(a[OVS_KEY_ATTR_GTP_TEID]);
+
+		SW_FLOW_KEY_PUT(match, gtp_teid, gtp_teid, is_mask);
+		*attrs &= ~(1ULL << OVS_KEY_ATTR_GTP_TEID);
 	}
 	return 0;
 }
@@ -2043,6 +2052,7 @@ static int validate_set(const struct nlattr *a,
 	case OVS_KEY_ATTR_CT_MARK:
 	case OVS_KEY_ATTR_CT_LABELS:
 	case OVS_KEY_ATTR_ETHERNET:
+	case OVS_KEY_ATTR_GTP_TEID:
 		break;
 
 	case OVS_KEY_ATTR_TUNNEL:
