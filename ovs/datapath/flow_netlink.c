@@ -171,6 +171,8 @@ static bool match_validate(const struct sw_flow_match *match,
 				key_expected |= 1ULL << OVS_KEY_ATTR_UDP;
 				if (match->mask && (match->mask->key.ip.proto == 0xff))
 					mask_allowed |= 1ULL << OVS_KEY_ATTR_UDP;
+					//if(match->mask->key.tp.src == htons(2152) && match->mask->key.tp.dst == htons(2152))
+					mask_allowed |= 1ULL << OVS_KEY_ATTR_GTP_TEID;
 			}
 
 			if (match->key->ip.proto == IPPROTO_SCTP) {
@@ -284,7 +286,7 @@ size_t ovs_key_attr_size(void)
 	/* Whenever adding new OVS_KEY_ FIELDS, we should consider
 	 * updating this function.
 	 */
-	BUILD_BUG_ON(OVS_KEY_ATTR_TUNNEL_INFO != 26);
+	BUILD_BUG_ON(OVS_KEY_ATTR_TUNNEL_INFO != 27);
 
 	return    nla_total_size(4)   /* OVS_KEY_ATTR_PRIORITY */
 		+ nla_total_size(0)   /* OVS_KEY_ATTR_TUNNEL */
@@ -358,7 +360,7 @@ static const struct ovs_len_tbl ovs_key_lens[OVS_KEY_ATTR_MAX + 1] = {
 	[OVS_KEY_ATTR_CT_ZONE]	 = { .len = sizeof(u16) },
 	[OVS_KEY_ATTR_CT_MARK]	 = { .len = sizeof(u32) },
 	[OVS_KEY_ATTR_CT_LABELS] = { .len = sizeof(struct ovs_key_ct_labels) },
-	[OVS_KEY_ATTR_GTP_TEID]	 = { .len = sizeof(be32) },
+	[OVS_KEY_ATTR_GTP_TEID]	 = { .len = sizeof(__be32) },
 };
 
 static bool check_attr_len(unsigned int attr_len, unsigned int expected_len)
@@ -902,13 +904,6 @@ static int metadata_from_nlattrs(struct net *net, struct sw_flow_match *match,
 				   sizeof(*cl), is_mask);
 		*attrs &= ~(1ULL << OVS_KEY_ATTR_CT_LABELS);
 	}
-	if (*attrs & (1 << OVS_KEY_ATTR_GTP_TEID) &&
-	    ovs_ct_verify(net, OVS_KEY_ATTR_GTP_TEID)) {
-		u32 mark = nla_get_be32(a[OVS_KEY_ATTR_GTP_TEID]);
-
-		SW_FLOW_KEY_PUT(match, gtp_teid, gtp_teid, is_mask);
-		*attrs &= ~(1ULL << OVS_KEY_ATTR_GTP_TEID);
-	}
 	return 0;
 }
 
@@ -1088,6 +1083,13 @@ static int ovs_key_from_nlattrs(struct net *net, struct sw_flow_match *match,
 		SW_FLOW_KEY_PUT(match, tp.src, udp_key->udp_src, is_mask);
 		SW_FLOW_KEY_PUT(match, tp.dst, udp_key->udp_dst, is_mask);
 		attrs &= ~(1ULL << OVS_KEY_ATTR_UDP);
+	}
+
+	if (attrs & (1ULL << OVS_KEY_ATTR_GTP_TEID)) {
+		SW_FLOW_KEY_PUT(match, gtp_teid,
+				nla_get_be32(a[OVS_KEY_ATTR_GTP_TEID]),
+				is_mask);
+		attrs &= ~(1ULL << OVS_KEY_ATTR_GTP_TEID);
 	}
 
 	if (attrs & (1ULL << OVS_KEY_ATTR_SCTP)) {
@@ -1582,6 +1584,8 @@ static int __ovs_nla_put_key(const struct sw_flow_key *swkey,
 			udp_key = nla_data(nla);
 			udp_key->udp_src = output->tp.src;
 			udp_key->udp_dst = output->tp.dst;
+			if (nla_put_be32(skb, OVS_KEY_ATTR_GTP_TEID, output->gtp_teid))
+				goto nla_put_failure;
 		} else if (swkey->ip.proto == IPPROTO_SCTP) {
 			struct ovs_key_sctp *sctp_key;
 
