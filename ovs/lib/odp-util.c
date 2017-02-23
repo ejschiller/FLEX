@@ -1805,7 +1805,7 @@ static const struct attr_len_tbl ovs_flow_key_attr_lens[OVS_KEY_ATTR_MAX + 1] = 
     [OVS_KEY_ATTR_CT_ZONE]   = { .len = 2 },
     [OVS_KEY_ATTR_CT_MARK]   = { .len = 4 },
     [OVS_KEY_ATTR_CT_LABELS] = { .len = sizeof(struct ovs_key_ct_labels) },
-    [OVS_KEY_ATTR_GTP_TEID]  = { .len = sizeof(be32) },
+    [OVS_KEY_ATTR_GTP_TEID]  = { .len = 4 },
 };
 
 /* Returns the correct length of the payload for a flow key attribute of the
@@ -2285,6 +2285,41 @@ format_be16x(struct ds *ds, const char *name, ovs_be16 key,
         ds_put_char(ds, ',');
     }
 }
+
+static void
+format_be32(struct ds *ds, const char *name, ovs_be32 key,
+            const ovs_be32 *mask, bool verbose)
+{
+    bool mask_empty = mask && !*mask;
+
+    if (verbose || !mask_empty) {
+        bool mask_full = !mask || *mask == OVS_BE32_MAX;
+
+        ds_put_format(ds, "%s=%"PRIu32, name, ntohs(key));
+        if (!mask_full) { /* Partially masked. */
+            ds_put_format(ds, "/%#"PRIx32, ntohs(*mask));
+        }
+        ds_put_char(ds, ',');
+    }
+}
+
+static void
+format_be32x(struct ds *ds, const char *name, ovs_be32 key,
+            const ovs_be32 *mask, bool verbose)
+{
+    bool mask_empty = mask && !*mask;
+
+    if (verbose || !mask_empty) {
+        bool mask_full = !mask || *mask == OVS_BE32_MAX;
+
+        ds_put_format(ds, "%s=%"PRIx32, name, ntohs(key));
+        if (!mask_full) { /* Partially masked. */
+            ds_put_format(ds, "/%#"PRIx32, ntohs(*mask));
+        }
+        ds_put_char(ds, ',');
+    }
+}
+
 
 static void
 format_tun_flags(struct ds *ds, const char *name, uint16_t key,
@@ -2931,7 +2966,7 @@ format_odp_key_attr(const struct nlattr *a, const struct nlattr *ma,
         break;
     }
     case OVS_KEY_ATTR_GTP_TEID: {
-	format_be32(ds, "gtp_teid", key->gtp_teid, MASK(mask, gtp_teid), verbose);
+	format_be32(ds, "gtp_teid", nl_attr_get_be32(a), ma ? nl_attr_get(ma) : NULL, verbose);
 	break;
     }
     case OVS_KEY_ATTR_UNSPEC:
@@ -4078,7 +4113,7 @@ parse_odp_key_mask_attr(const char *s, const struct simap *port_names,
     SCAN_SINGLE("ct_zone(", uint16_t, u16, OVS_KEY_ATTR_CT_ZONE);
     SCAN_SINGLE("ct_mark(", uint32_t, u32, OVS_KEY_ATTR_CT_MARK);
     SCAN_SINGLE("ct_label(", ovs_u128, u128, OVS_KEY_ATTR_CT_LABELS);
-    SCAN_SINGLE("gtp_teid(", be32, be32, OVS_KEY_ATTR_GTP_TEID);
+    SCAN_SINGLE("gtp_teid(", ovs_be32, be32, OVS_KEY_ATTR_GTP_TEID);
 
     SCAN_BEGIN_NESTED("tunnel(", OVS_KEY_ATTR_TUNNEL) {
         SCAN_FIELD_NESTED("tun_id=", ovs_be64, be64, OVS_TUNNEL_KEY_ATTR_ID);
@@ -4330,10 +4365,6 @@ odp_flow_key_from_flow__(const struct odp_flow_key_parms *parms,
         nl_msg_put_unspec(buf, OVS_KEY_ATTR_CT_LABELS, &data->ct_label,
                           sizeof(data->ct_label));
     }
-    if (parms->support.gtp_teid) {
-        nl_msg_put_unspec(buf, OVS_KEY_ATTR_GTP_TEID, &data->gtp_teid,
-                          sizeof(data->gtp_teid));
-    }
  
     if (parms->support.recirc) {
         nl_msg_put_u32(buf, OVS_KEY_ATTR_RECIRC_ID, data->recirc_id);
@@ -4435,6 +4466,9 @@ odp_flow_key_from_flow__(const struct odp_flow_key_parms *parms,
             udp_key = nl_msg_put_unspec_uninit(buf, OVS_KEY_ATTR_UDP,
                                                sizeof *udp_key);
             get_tp_key(data, udp_key);
+	    if(data->gtp_teid) {
+		nl_msg_put_be32(buf, OVS_KEY_ATTR_GTP_TEID, data->gtp_teid);
+	    }
         } else if (flow->nw_proto == IPPROTO_SCTP) {
             union ovs_key_tp *sctp_key;
 
@@ -4952,6 +4986,11 @@ parse_l2_5_onward(const struct nlattr *attrs[OVS_KEY_ATTR_MAX + 1],
             put_tp_key(udp_key, flow);
             expected_bit = OVS_KEY_ATTR_UDP;
         }
+        if (present_attrs & (UINT64_C(1) << OVS_KEY_ATTR_GTP_TEID)) {
+            expected_attrs |= UINT64_C(1) << OVS_KEY_ATTR_GTP_TEID;
+            flow->gtp_teid = nl_attr_get_be32(attrs[OVS_KEY_ATTR_GTP_TEID]);
+        }
+
     } else if (src_flow->nw_proto == IPPROTO_SCTP
                && (src_flow->dl_type == htons(ETH_TYPE_IP) ||
                    src_flow->dl_type == htons(ETH_TYPE_IPV6))
